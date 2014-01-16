@@ -26,7 +26,8 @@
 #include <linux/radix-tree.h>
 #include <linux/crc32c.h>
 #include <linux/vmalloc.h>
-#include <linux/string.h>
+#include <linux/unistd.h>
+//#include <fcntl.h>
 
 #include "send.h"
 #include "backref.h"
@@ -38,7 +39,6 @@
 static int g_verbose = 0;
 
 #define verbose_printk(...) if (g_verbose) printk(__VA_ARGS__)
-
 /*
  * A fs_path is a helper to dynamically build path names with unknown size.
  * It reallocates the internal buffer on demand.
@@ -55,8 +55,8 @@ struct fs_path {
 
 			char *buf;
 			int buf_len;
-			unsigned int reversed:1;
-			unsigned int virtual_mem:1;
+			int reversed:1;
+			int virtual_mem:1;
 			char inline_buf[];
 		};
 		char pad[PAGE_SIZE];
@@ -148,6 +148,7 @@ struct name_cache_entry {
 
 static void fs_path_reset(struct fs_path *p)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	if (p->reversed) {
 		p->start = p->buf + p->buf_len - 1;
 		p->end = p->start;
@@ -157,10 +158,13 @@ static void fs_path_reset(struct fs_path *p)
 		p->end = p->start;
 		*p->start = 0;
 	}
+//        printk("End of %s\n",__FUNCTION__);
+
 }
 
 static struct fs_path *fs_path_alloc(void)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	struct fs_path *p;
 
 	p = kmalloc(sizeof(*p), GFP_NOFS);
@@ -171,11 +175,14 @@ static struct fs_path *fs_path_alloc(void)
 	p->buf = p->inline_buf;
 	p->buf_len = FS_PATH_INLINE_SIZE;
 	fs_path_reset(p);
+//      printk("End of %s\n",__FUNCTION__);
 	return p;
+
 }
 
 static struct fs_path *fs_path_alloc_reversed(void)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct fs_path *p;
 
 	p = fs_path_alloc();
@@ -183,11 +190,13 @@ static struct fs_path *fs_path_alloc_reversed(void)
 		return NULL;
 	p->reversed = 1;
 	fs_path_reset(p);
+        printk("End of %s\n",__FUNCTION__);
 	return p;
 }
 
 static void fs_path_free(struct fs_path *p)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	if (!p)
 		return;
 	if (p->buf != p->inline_buf) {
@@ -197,15 +206,18 @@ static void fs_path_free(struct fs_path *p)
 			kfree(p->buf);
 	}
 	kfree(p);
+        printk("End of %s\n",__FUNCTION__);
 }
 
 static int fs_path_len(struct fs_path *p)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	return p->end - p->start;
 }
 
 static int fs_path_ensure_buf(struct fs_path *p, int len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	char *tmp_buf;
 	int path_len;
 	int old_buf_len;
@@ -220,7 +232,7 @@ static int fs_path_ensure_buf(struct fs_path *p, int len)
 	len = PAGE_ALIGN(len);
 
 	if (p->buf == p->inline_buf) {
-		tmp_buf = kmalloc(len, GFP_NOFS | __GFP_NOWARN);
+		tmp_buf = kmalloc(len, GFP_NOFS);
 		if (!tmp_buf) {
 			tmp_buf = vmalloc(len);
 			if (!tmp_buf)
@@ -260,11 +272,13 @@ static int fs_path_ensure_buf(struct fs_path *p, int len)
 		p->start = p->buf;
 		p->end = p->start + path_len;
 	}
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
 static int fs_path_prepare_for_add(struct fs_path *p, int name_len)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	int new_len;
 
@@ -289,25 +303,30 @@ static int fs_path_prepare_for_add(struct fs_path *p, int name_len)
 	}
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int fs_path_add(struct fs_path *p, const char *name, int name_len)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = fs_path_prepare_for_add(p, name_len);
 	if (ret < 0)
 		goto out;
 	memcpy(p->prepared, name, name_len);
+//	printk("name in fs_path_add is %s and p->prepared is %s\n",name,p->prepared);
 	p->prepared = NULL;
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int fs_path_add_path(struct fs_path *p, struct fs_path *p2)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = fs_path_prepare_for_add(p, p2->end - p2->start);
@@ -317,6 +336,7 @@ static int fs_path_add_path(struct fs_path *p, struct fs_path *p2)
 	p->prepared = NULL;
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -324,6 +344,7 @@ static int fs_path_add_from_extent_buffer(struct fs_path *p,
 					  struct extent_buffer *eb,
 					  unsigned long off, int len)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = fs_path_prepare_for_add(p, len);
@@ -334,6 +355,7 @@ static int fs_path_add_from_extent_buffer(struct fs_path *p,
 	p->prepared = NULL;
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -349,6 +371,7 @@ static void fs_path_remove(struct fs_path *p)
 
 static int fs_path_copy(struct fs_path *p, struct fs_path *from)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	p->reversed = from->reversed;
@@ -356,12 +379,14 @@ static int fs_path_copy(struct fs_path *p, struct fs_path *from)
 
 	ret = fs_path_add_path(p, from);
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 
 static void fs_path_unreverse(struct fs_path *p)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	char *tmp;
 	int len;
 
@@ -374,10 +399,12 @@ static void fs_path_unreverse(struct fs_path *p)
 	p->end = p->start + len;
 	memmove(p->start, tmp, len + 1);
 	p->reversed = 0;
+        printk("End of %s\n",__FUNCTION__);
 }
 
 static struct btrfs_path *alloc_path_for_send(void)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	struct btrfs_path *path;
 
 	path = btrfs_alloc_path();
@@ -385,11 +412,13 @@ static struct btrfs_path *alloc_path_for_send(void)
 		return NULL;
 	path->search_commit_root = 1;
 	path->skip_locking = 1;
+//        printk("End of %s\n",__FUNCTION__);
 	return path;
 }
 
 static int write_buf(struct file *filp, const void *buf, u32 len, loff_t *off)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	mm_segment_t old_fs;
 	u32 pos = 0;
@@ -415,27 +444,58 @@ static int write_buf(struct file *filp, const void *buf, u32 len, loff_t *off)
 	ret = 0;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	set_fs(old_fs);
 	return ret;
 }
 
 static int tlv_put(struct send_ctx *sctx, u16 attr, const void *data, int len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct btrfs_tlv_header *hdr;
 	int total_len = sizeof(*hdr) + len;
 	int left = sctx->send_max_size - sctx->send_size;
-
+//	printk("data in %s is %s\n",__FUNCTION__,(char*)data);
 	if (unlikely(left < total_len))
 		return -EOVERFLOW;
-
 	hdr = (struct btrfs_tlv_header *) (sctx->send_buf + sctx->send_size);
 	hdr->tlv_type = cpu_to_le16(attr);
 	hdr->tlv_len = cpu_to_le16(len);
 	memcpy(hdr + 1, data, len);
 	sctx->send_size += total_len;
-
+        
+	printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
+
+/*static int qudb_tlv_put(struct send_ctx *sctx, u16 attr,void *data, int len)
+{
+	printk("(4)\n");
+	char *temp_str = data;
+	if(len == -1)
+		len = strlen(temp_str);
+        printk("(5)\n");
+	struct btrfs_tlv_header *hdr;
+        int total_len = sizeof(*hdr) + len;
+        int left = sctx->send_max_size - sctx->send_size;
+
+        if (unlikely(left < total_len))
+                return -EOVERFLOW;
+
+        hdr = (struct btrfs_tlv_header *) (sctx->send_buf + sctx->send_size);
+        hdr->tlv_type = cpu_to_le16(attr);
+        hdr->tlv_len = cpu_to_le16(len);
+        memcpy(hdr + 1, data, len);
+//        sctx->send_size += total_len;
+
+        return 0;
+}
+
+*/
+
+
+
+
 
 #if 0
 static int tlv_put_u8(struct send_ctx *sctx, u16 attr, u8 value)
@@ -458,21 +518,28 @@ static int tlv_put_u32(struct send_ctx *sctx, u16 attr, u32 value)
 
 static int tlv_put_u64(struct send_ctx *sctx, u16 attr, u64 value)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	__le64 tmp = cpu_to_le64(value);
+        printk("End of %s\n",__FUNCTION__);
 	return tlv_put(sctx, attr, &tmp, sizeof(tmp));
 }
 
 static int tlv_put_string(struct send_ctx *sctx, u16 attr,
 			  const char *str, int len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	if (len == -1)
 		len = strlen(str);
+	struct file *filep;
+	printk("tlv string : %s\n",str);
+        printk("End of %s\n",__FUNCTION__);
 	return tlv_put(sctx, attr, str, len);
 }
 
 static int tlv_put_uuid(struct send_ctx *sctx, u16 attr,
 			const u8 *uuid)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	return tlv_put(sctx, attr, uuid, BTRFS_UUID_SIZE);
 }
 
@@ -493,6 +560,7 @@ static int tlv_put_btrfs_timespec(struct send_ctx *sctx, u16 attr,
 {
 	struct btrfs_timespec bts;
 	read_extent_buffer(eb, &bts, (unsigned long)ts, sizeof(bts));
+        printk("tlv put timespec %lu", bts.sec);
 	return tlv_put(sctx, attr, &bts, sizeof(bts));
 }
 
@@ -515,6 +583,10 @@ static int tlv_put_btrfs_timespec(struct send_ctx *sctx, u16 attr,
 #define TLV_PUT_U16(sctx, attrtype, data) TLV_PUT_INT(sctx, attrtype, 16, data)
 #define TLV_PUT_U32(sctx, attrtype, data) TLV_PUT_INT(sctx, attrtype, 32, data)
 #define TLV_PUT_U64(sctx, attrtype, data) TLV_PUT_INT(sctx, attrtype, 64, data)
+
+
+
+
 #define TLV_PUT_STRING(sctx, attrtype, str, len) \
 	do { \
 		ret = tlv_put_string(sctx, attrtype, str, len); \
@@ -549,13 +621,17 @@ static int tlv_put_btrfs_timespec(struct send_ctx *sctx, u16 attr,
 
 static int send_header(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct btrfs_stream_header hdr;
 
 	strcpy(hdr.magic, BTRFS_SEND_STREAM_MAGIC);
 	hdr.version = cpu_to_le32(BTRFS_SEND_STREAM_VERSION);
 
-	return write_buf(sctx->send_filp, &hdr, sizeof(hdr),
+	/*return write_buf(sctx->send_filp, &hdr, sizeof(hdr),
 					&sctx->send_off);
+	*/
+        printk("End of %s\n",__FUNCTION__);
+	return 0; //T this line is to be removed
 }
 
 /*
@@ -563,8 +639,8 @@ static int send_header(struct send_ctx *sctx)
  */
 static int begin_cmd(struct send_ctx *sctx, int cmd)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct btrfs_cmd_header *hdr;
-
 	if (!sctx->send_buf) {
 		WARN_ON(1);
 		return -EINVAL;
@@ -576,29 +652,33 @@ static int begin_cmd(struct send_ctx *sctx, int cmd)
 	hdr = (struct btrfs_cmd_header *)sctx->send_buf;
 	hdr->cmd = cpu_to_le16(cmd);
 
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
 static int send_cmd(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_cmd_header *hdr;
 	u32 crc;
-
+        
 	hdr = (struct btrfs_cmd_header *)sctx->send_buf;
 	hdr->len = cpu_to_le32(sctx->send_size - sizeof(*hdr));
 	hdr->crc = 0;
 
 	crc = crc32c(0, (unsigned char *)sctx->send_buf, sctx->send_size);
 	hdr->crc = cpu_to_le32(crc);
-
-	ret = write_buf(sctx->send_filp, sctx->send_buf, sctx->send_size,
+	/*ret = write_buf(sctx->send_filp, sctx->send_buf, sctx->send_size,
 					&sctx->send_off);
-
+*/
+	//write_buf(sctx->send_filp,"Tanmay Tupe\0",sctx->send_size,&sctx->send_off);
+	ret = 0;
 	sctx->total_send_size += sctx->send_size;
 	sctx->cmd_send_size[le16_to_cpu(hdr->cmd)] += sctx->send_size;
 	sctx->send_size = 0;
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -608,6 +688,7 @@ static int send_cmd(struct send_ctx *sctx)
 static int send_rename(struct send_ctx *sctx,
 		     struct fs_path *from, struct fs_path *to)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 verbose_printk("btrfs: send_rename %s -> %s\n", from->start, to->start);
@@ -623,6 +704,7 @@ verbose_printk("btrfs: send_rename %s -> %s\n", from->start, to->start);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -632,6 +714,7 @@ out:
 static int send_link(struct send_ctx *sctx,
 		     struct fs_path *path, struct fs_path *lnk)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 verbose_printk("btrfs: send_link %s -> %s\n", path->start, lnk->start);
@@ -647,6 +730,7 @@ verbose_printk("btrfs: send_link %s -> %s\n", path->start, lnk->start);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -655,6 +739,7 @@ out:
  */
 static int send_unlink(struct send_ctx *sctx, struct fs_path *path)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 verbose_printk("btrfs: send_unlink %s\n", path->start);
@@ -669,6 +754,7 @@ verbose_printk("btrfs: send_unlink %s\n", path->start);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -677,6 +763,7 @@ out:
  */
 static int send_rmdir(struct send_ctx *sctx, struct fs_path *path)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 verbose_printk("btrfs: send_rmdir %s\n", path->start);
@@ -691,6 +778,7 @@ verbose_printk("btrfs: send_rmdir %s\n", path->start);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -702,6 +790,7 @@ static int get_inode_info(struct btrfs_root *root,
 			  u64 *mode, u64 *uid, u64 *gid,
 			  u64 *rdev)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_inode_item *ii;
 	struct btrfs_key key;
@@ -738,6 +827,7 @@ static int get_inode_info(struct btrfs_root *root,
 		*rdev = btrfs_inode_rdev(path->nodes[0], ii);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -758,6 +848,7 @@ static int iterate_inode_ref(struct btrfs_root *root, struct btrfs_path *path,
 			     struct btrfs_key *found_key, int resolve,
 			     iterate_inode_ref_t iterate, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct extent_buffer *eb = path->nodes[0];
 	struct btrfs_item *item;
 	struct btrfs_inode_ref *iref;
@@ -857,6 +948,7 @@ static int iterate_inode_ref(struct btrfs_root *root, struct btrfs_path *path,
 	}
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(tmp_path);
 	fs_path_free(p);
 	return ret;
@@ -878,6 +970,7 @@ static int iterate_dir_item(struct btrfs_root *root, struct btrfs_path *path,
 			    struct btrfs_key *found_key,
 			    iterate_dir_item_t iterate, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct extent_buffer *eb;
 	struct btrfs_item *item;
@@ -968,12 +1061,14 @@ out:
 		vfree(buf);
 	else
 		kfree(buf);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int __copy_first_ref(int num, u64 dir, int index,
 			    struct fs_path *p, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct fs_path *pt = ctx;
 
@@ -982,6 +1077,7 @@ static int __copy_first_ref(int num, u64 dir, int index,
 		return ret;
 
 	/* we want the first only */
+        printk("End of %s\n",__FUNCTION__);
 	return 1;
 }
 
@@ -992,6 +1088,7 @@ static int __copy_first_ref(int num, u64 dir, int index,
 static int get_inode_path(struct btrfs_root *root,
 			  u64 ino, struct fs_path *path)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_key key, found_key;
 	struct btrfs_path *p;
@@ -1028,6 +1125,7 @@ static int get_inode_path(struct btrfs_root *root,
 	ret = 0;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(p);
 	return ret;
 }
@@ -1054,6 +1152,7 @@ struct backref_ctx {
 
 static int __clone_root_cmp_bsearch(const void *key, const void *elt)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	u64 root = (u64)(uintptr_t)key;
 	struct clone_root *cr = (struct clone_root *)elt;
 
@@ -1061,11 +1160,13 @@ static int __clone_root_cmp_bsearch(const void *key, const void *elt)
 		return -1;
 	if (root > cr->root->objectid)
 		return 1;
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
 static int __clone_root_cmp_sort(const void *e1, const void *e2)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct clone_root *cr1 = (struct clone_root *)e1;
 	struct clone_root *cr2 = (struct clone_root *)e2;
 
@@ -1073,6 +1174,7 @@ static int __clone_root_cmp_sort(const void *e1, const void *e2)
 		return -1;
 	if (cr1->root->objectid > cr2->root->objectid)
 		return 1;
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
@@ -1082,6 +1184,7 @@ static int __clone_root_cmp_sort(const void *e1, const void *e2)
  */
 static int __iterate_backrefs(u64 ino, u64 offset, u64 root, void *ctx_)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct backref_ctx *bctx = ctx_;
 	struct clone_root *found;
 	int ret;
@@ -1147,6 +1250,7 @@ static int __iterate_backrefs(u64 ino, u64 offset, u64 root, void *ctx_)
 			found->offset = offset;
 	}
 
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
@@ -1165,6 +1269,7 @@ static int find_extent_clone(struct send_ctx *sctx,
 			     u64 ino_size,
 			     struct clone_root **found)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	int extent_type;
 	u64 logical;
@@ -1308,6 +1413,7 @@ verbose_printk(KERN_DEBUG "btrfs: find_extent_clone: data_offset=%llu, "
 	}
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(tmp_path);
 	kfree(backref_ctx);
 	return ret;
@@ -1317,6 +1423,7 @@ static int read_symlink(struct btrfs_root *root,
 			u64 ino,
 			struct fs_path *dest)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_path *path;
 	struct btrfs_key key;
@@ -1351,6 +1458,7 @@ static int read_symlink(struct btrfs_root *root,
 	ret = fs_path_add_from_extent_buffer(dest, path->nodes[0], off, len);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -1363,6 +1471,7 @@ static int gen_unique_name(struct send_ctx *sctx,
 			   u64 ino, u64 gen,
 			   struct fs_path *dest)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_path *path;
 	struct btrfs_dir_item *di;
@@ -1373,7 +1482,7 @@ static int gen_unique_name(struct send_ctx *sctx,
 	path = alloc_path_for_send();
 	if (!path)
 		return -ENOMEM;
-
+//	printk("No page fault till while(1) of gen_unique_name\n");
 	while (1) {
 		len = snprintf(tmp, sizeof(tmp) - 1, "o%llu-%llu-%llu",
 				ino, gen, idx);
@@ -1382,7 +1491,7 @@ static int gen_unique_name(struct send_ctx *sctx,
 			ret = -EOVERFLOW;
 			goto out;
 		}
-
+//		printk("tmp1 is %s\n",tmp);
 		di = btrfs_lookup_dir_item(NULL, sctx->send_root,
 				path, BTRFS_FIRST_FREE_OBJECTID,
 				tmp, strlen(tmp), 0);
@@ -1418,11 +1527,15 @@ static int gen_unique_name(struct send_ctx *sctx,
 		}
 		/* unique */
 		break;
-	}
 
+	}
+//	printk("No page fault before printing\n");
+//	printk("tmp is %s\n",tmp);
+//	printk("No page fault after printing the temp \n");
 	ret = fs_path_add(dest, tmp, strlen(tmp));
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -1437,6 +1550,7 @@ enum inode_state {
 
 static int get_cur_inode_state(struct send_ctx *sctx, u64 ino, u64 gen)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	int left_ret;
 	int right_ret;
@@ -1498,11 +1612,13 @@ static int get_cur_inode_state(struct send_ctx *sctx, u64 ino, u64 gen)
 	}
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int is_inode_existent(struct send_ctx *sctx, u64 ino, u64 gen)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = get_cur_inode_state(sctx, ino, gen);
@@ -1517,6 +1633,7 @@ static int is_inode_existent(struct send_ctx *sctx, u64 ino, u64 gen)
 		ret = 0;
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -1528,6 +1645,7 @@ static int lookup_dir_item_inode(struct btrfs_root *root,
 				 u64 *found_inode,
 				 u8 *found_type)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_dir_item *di;
 	struct btrfs_key key;
@@ -1552,6 +1670,7 @@ static int lookup_dir_item_inode(struct btrfs_root *root,
 	*found_type = btrfs_dir_type(path->nodes[0], di);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -1563,6 +1682,7 @@ out:
 static int get_first_ref(struct btrfs_root *root, u64 ino,
 			 u64 *dir, u64 *dir_gen, struct fs_path *name)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_key key;
 	struct btrfs_key found_key;
@@ -1621,6 +1741,7 @@ static int get_first_ref(struct btrfs_root *root, u64 ino,
 	*dir = parent_dir;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -1629,6 +1750,7 @@ static int is_first_ref(struct btrfs_root *root,
 			u64 ino, u64 dir,
 			const char *name, int name_len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct fs_path *tmp_name;
 	u64 tmp_dir;
@@ -1650,6 +1772,7 @@ static int is_first_ref(struct btrfs_root *root,
 	ret = !memcmp(tmp_name->start, name, name_len);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(tmp_name);
 	return ret;
 }
@@ -1668,8 +1791,8 @@ static int will_overwrite_ref(struct send_ctx *sctx, u64 dir, u64 dir_gen,
 			      const char *name, int name_len,
 			      u64 *who_ino, u64 *who_gen)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
-	u64 gen;
 	u64 other_inode = 0;
 	u8 other_type = 0;
 
@@ -1679,24 +1802,6 @@ static int will_overwrite_ref(struct send_ctx *sctx, u64 dir, u64 dir_gen,
 	ret = is_inode_existent(sctx, dir, dir_gen);
 	if (ret <= 0)
 		goto out;
-
-	/*
-	 * If we have a parent root we need to verify that the parent dir was
-	 * not delted and then re-created, if it was then we have no overwrite
-	 * and we can just unlink this entry.
-	 */
-	if (sctx->parent_root) {
-		ret = get_inode_info(sctx->parent_root, dir, NULL, &gen, NULL,
-				     NULL, NULL, NULL);
-		if (ret < 0 && ret != -ENOENT)
-			goto out;
-		if (ret) {
-			ret = 0;
-			goto out;
-		}
-		if (gen != dir_gen)
-			goto out;
-	}
 
 	ret = lookup_dir_item_inode(sctx->parent_root, dir, name, name_len,
 			&other_inode, &other_type);
@@ -1725,6 +1830,7 @@ static int will_overwrite_ref(struct send_ctx *sctx, u64 dir, u64 dir_gen,
 	}
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -1740,6 +1846,7 @@ static int did_overwrite_ref(struct send_ctx *sctx,
 			    u64 ino, u64 ino_gen,
 			    const char *name, int name_len)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	u64 gen;
 	u64 ow_inode;
@@ -1780,6 +1887,7 @@ static int did_overwrite_ref(struct send_ctx *sctx,
 		ret = 0;
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -1790,6 +1898,7 @@ out:
  */
 static int did_overwrite_first_ref(struct send_ctx *sctx, u64 ino, u64 gen)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *name = NULL;
 	u64 dir;
@@ -1810,6 +1919,7 @@ static int did_overwrite_first_ref(struct send_ctx *sctx, u64 ino, u64 gen)
 			name->start, fs_path_len(name));
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(name);
 	return ret;
 }
@@ -1823,6 +1933,7 @@ out:
 static int name_cache_insert(struct send_ctx *sctx,
 			     struct name_cache_entry *nce)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct list_head *nce_head;
 
@@ -1847,12 +1958,14 @@ static int name_cache_insert(struct send_ctx *sctx,
 	list_add_tail(&nce->list, &sctx->name_cache_list);
 	sctx->name_cache_size++;
 
+	 printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static void name_cache_delete(struct send_ctx *sctx,
 			      struct name_cache_entry *nce)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	struct list_head *nce_head;
 
 	nce_head = radix_tree_lookup(&sctx->name_cache,
@@ -1867,11 +1980,13 @@ static void name_cache_delete(struct send_ctx *sctx,
 		radix_tree_delete(&sctx->name_cache, (unsigned long)nce->ino);
 		kfree(nce_head);
 	}
+//        printk("End of %s\n",__FUNCTION__);
 }
 
 static struct name_cache_entry *name_cache_search(struct send_ctx *sctx,
 						    u64 ino, u64 gen)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	struct list_head *nce_head;
 	struct name_cache_entry *cur;
 
@@ -1883,6 +1998,7 @@ static struct name_cache_entry *name_cache_search(struct send_ctx *sctx,
 		if (cur->ino == ino && cur->gen == gen)
 			return cur;
 	}
+//      printk("End of %s\n",__FUNCTION__);
 	return NULL;
 }
 
@@ -1892,6 +2008,7 @@ static struct name_cache_entry *name_cache_search(struct send_ctx *sctx,
  */
 static void name_cache_used(struct send_ctx *sctx, struct name_cache_entry *nce)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	list_del(&nce->list);
 	list_add_tail(&nce->list, &sctx->name_cache_list);
 }
@@ -1901,6 +2018,7 @@ static void name_cache_used(struct send_ctx *sctx, struct name_cache_entry *nce)
  */
 static void name_cache_clean_unused(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct name_cache_entry *nce;
 
 	if (sctx->name_cache_size < SEND_CTX_NAME_CACHE_CLEAN_SIZE)
@@ -1912,10 +2030,12 @@ static void name_cache_clean_unused(struct send_ctx *sctx)
 		name_cache_delete(sctx, nce);
 		kfree(nce);
 	}
+        printk("End of %s\n",__FUNCTION__);
 }
 
 static void name_cache_free(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct name_cache_entry *nce;
 
 	while (!list_empty(&sctx->name_cache_list)) {
@@ -1924,6 +2044,7 @@ static void name_cache_free(struct send_ctx *sctx)
 		name_cache_delete(sctx, nce);
 		kfree(nce);
 	}
+        printk("End of %s\n",__FUNCTION__);
 }
 
 /*
@@ -1940,6 +2061,7 @@ static int __get_cur_name_and_parent(struct send_ctx *sctx,
 				     u64 *parent_gen,
 				     struct fs_path *dest)
 {
+//printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	int nce_ret;
 	struct btrfs_path *path = NULL;
@@ -2035,7 +2157,7 @@ out_cache:
 	nce->name_len = fs_path_len(dest);
 	nce->ret = ret;
 	strcpy(nce->name, dest->start);
-
+	printk("nce->name is %s\n",nce->name);
 	if (ino < sctx->send_progress)
 		nce->need_later_update = 0;
 	else
@@ -2047,6 +2169,7 @@ out_cache:
 	name_cache_clean_unused(sctx);
 
 out:
+//        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -2079,6 +2202,7 @@ out:
 static int get_cur_path(struct send_ctx *sctx, u64 ino, u64 gen,
 			struct fs_path *dest)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *name = NULL;
 	u64 parent_inode = 0;
@@ -2111,8 +2235,10 @@ static int get_cur_path(struct send_ctx *sctx, u64 ino, u64 gen,
 		ino = parent_inode;
 		gen = parent_gen;
 	}
-
+if(name->start!=NULL&&dest->start!=NULL)
+printk("name->start = %s, dest->start = %s, \n",name->start,dest->start);
 out:
+	printk("End of %s\n",__FUNCTION__);
 	fs_path_free(name);
 	if (!ret)
 		fs_path_unreverse(dest);
@@ -2125,6 +2251,7 @@ out:
  */
 static int open_cur_inode_file(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_key key;
 	struct path path;
@@ -2170,6 +2297,7 @@ out:
 	 * no xxxput required here as every vfs op
 	 * does it by itself on failure
 	 */
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -2178,6 +2306,7 @@ out:
  */
 static int close_cur_inode_file(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	if (!sctx->cur_inode_filp)
@@ -2187,6 +2316,7 @@ static int close_cur_inode_file(struct send_ctx *sctx)
 	sctx->cur_inode_filp = NULL;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -2195,6 +2325,7 @@ out:
  */
 static int send_subvol_begin(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_root *send_root = sctx->send_root;
 	struct btrfs_root *parent_root = sctx->parent_root;
@@ -2266,6 +2397,7 @@ static int send_subvol_begin(struct send_ctx *sctx)
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	btrfs_free_path(path);
 	kfree(name);
 	return ret;
@@ -2273,6 +2405,7 @@ out:
 
 static int send_truncate(struct send_ctx *sctx, u64 ino, u64 gen, u64 size)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 
@@ -2296,12 +2429,14 @@ verbose_printk("btrfs: send_truncate %llu size=%llu\n", ino, size);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	return ret;
 }
 
 static int send_chmod(struct send_ctx *sctx, u64 ino, u64 gen, u64 mode)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 
@@ -2325,12 +2460,14 @@ verbose_printk("btrfs: send_chmod %llu mode=%llu\n", ino, mode);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	return ret;
 }
 
 static int send_chown(struct send_ctx *sctx, u64 ino, u64 gen, u64 uid, u64 gid)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 
@@ -2355,12 +2492,14 @@ verbose_printk("btrfs: send_chown %llu uid=%llu, gid=%llu\n", ino, uid, gid);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	return ret;
 }
 
 static int send_utimes(struct send_ctx *sctx, u64 ino, u64 gen)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p = NULL;
 	struct btrfs_inode_item *ii;
@@ -2412,11 +2551,27 @@ verbose_printk("btrfs: send_utimes %llu\n", ino);
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	btrfs_free_path(path);
 	return ret;
 }
 
+/*char *get_relative_path(struct send_ctx *sctx, u16 attr,struct fs_path *p)
+{
+	int ret;
+	char *relative_path = p->start;
+	printk("(3)\n");
+	do { 
+		ret = qudb_tlv_put(sctx, attr,relative_path,p->end - p->start);
+                if (ret < 0) 
+                        break; 
+        } while (0);
+	printk("relative path in get_relative_path is %s\n",relative_path);
+return relative_path;
+
+}
+*/
 /*
  * Sends a BTRFS_SEND_C_MKXXX or SYMLINK command to user space. We don't have
  * a valid path yet because we did not process the refs yet. So, the inode
@@ -2424,13 +2579,14 @@ out:
  */
 static int send_create_inode(struct send_ctx *sctx, u64 ino)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 	int cmd;
 	u64 gen;
 	u64 mode;
 	u64 rdev;
-
+//char *relative_path;
 verbose_printk("btrfs: send_create_inode %llu\n", ino);
 
 	p = fs_path_alloc();
@@ -2466,32 +2622,32 @@ verbose_printk("btrfs: send_create_inode %llu\n", ino);
 		goto out;
 
 	ret = gen_unique_name(sctx, ino, gen, p);
+	
 	if (ret < 0)
 		goto out;
 
 	TLV_PUT_PATH(sctx, BTRFS_SEND_A_PATH, p);
 	TLV_PUT_U64(sctx, BTRFS_SEND_A_INO, ino);
-
 	if (S_ISLNK(mode)) {
 		fs_path_reset(p);
 		ret = read_symlink(sctx->send_root, ino, p);
 		if (ret < 0)
 			goto out;
 		TLV_PUT_PATH(sctx, BTRFS_SEND_A_PATH_LINK, p);
+
 	} else if (S_ISCHR(mode) || S_ISBLK(mode) ||
 		   S_ISFIFO(mode) || S_ISSOCK(mode)) {
 		TLV_PUT_U64(sctx, BTRFS_SEND_A_RDEV, new_encode_dev(rdev));
 		TLV_PUT_U64(sctx, BTRFS_SEND_A_MODE, mode);
 	}
-
 	ret = send_cmd(sctx);
 	if (ret < 0)
 		goto out;
-
-
 tlv_put_failure:
 out:
+
 	fs_path_free(p);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -2502,6 +2658,7 @@ out:
  */
 static int did_create_dir(struct send_ctx *sctx, u64 dir)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_path *path = NULL;
 	struct btrfs_key key;
@@ -2539,8 +2696,7 @@ static int did_create_dir(struct send_ctx *sctx, u64 dir)
 		di = btrfs_item_ptr(eb, slot, struct btrfs_dir_item);
 		btrfs_dir_item_key_to_cpu(eb, di, &di_key);
 
-		if (di_key.type != BTRFS_ROOT_ITEM_KEY &&
-		    di_key.objectid < sctx->send_progress) {
+		if (di_key.objectid < sctx->send_progress) {
 			ret = 1;
 			goto out;
 		}
@@ -2551,6 +2707,7 @@ static int did_create_dir(struct send_ctx *sctx, u64 dir)
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -2563,7 +2720,6 @@ out:
 static int send_create_inode_if_needed(struct send_ctx *sctx)
 {
 	int ret;
-
 	if (S_ISDIR(sctx->cur_inode_mode)) {
 		ret = did_create_dir(sctx, sctx->cur_ino);
 		if (ret < 0)
@@ -2579,6 +2735,7 @@ static int send_create_inode_if_needed(struct send_ctx *sctx)
 		goto out;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -2601,7 +2758,9 @@ struct recorded_ref {
 static int record_ref(struct list_head *head, u64 dir,
 		      u64 dir_gen, struct fs_path *path)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct recorded_ref *ref;
+	char *tmp;
 
 	ref = kmalloc(sizeof(*ref), GFP_NOFS);
 	if (!ref)
@@ -2611,37 +2770,29 @@ static int record_ref(struct list_head *head, u64 dir,
 	ref->dir_gen = dir_gen;
 	ref->full_path = path;
 
-	ref->name = (char *)kbasename(ref->full_path->start);
-	ref->name_len = ref->full_path->end - ref->name;
-	ref->dir_path = ref->full_path->start;
-	if (ref->name == ref->full_path->start)
+	tmp = strrchr(ref->full_path->start, '/');
+	if (!tmp) {
+		ref->name_len = ref->full_path->end - ref->full_path->start;
+		ref->name = ref->full_path->start;
 		ref->dir_path_len = 0;
-	else
+		ref->dir_path = ref->full_path->start;
+	} else {
+		tmp++;
+		ref->name_len = ref->full_path->end - tmp;
+		ref->name = tmp;
+		ref->dir_path = ref->full_path->start;
 		ref->dir_path_len = ref->full_path->end -
 				ref->full_path->start - 1 - ref->name_len;
+	}
 
 	list_add_tail(&ref->list, head);
-	return 0;
-}
-
-static int dup_ref(struct recorded_ref *ref, struct list_head *list)
-{
-	struct recorded_ref *new;
-
-	new = kmalloc(sizeof(*ref), GFP_NOFS);
-	if (!new)
-		return -ENOMEM;
-
-	new->dir = ref->dir;
-	new->dir_gen = ref->dir_gen;
-	new->full_path = NULL;
-	INIT_LIST_HEAD(&new->list);
-	list_add_tail(&new->list, list);
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
 static void __free_recorded_refs(struct list_head *head)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct recorded_ref *cur;
 
 	while (!list_empty(head)) {
@@ -2650,12 +2801,15 @@ static void __free_recorded_refs(struct list_head *head)
 		list_del(&cur->list);
 		kfree(cur);
 	}
+        printk("End of %s\n",__FUNCTION__);
 }
 
 static void free_recorded_refs(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	__free_recorded_refs(&sctx->new_refs);
 	__free_recorded_refs(&sctx->deleted_refs);
+        printk("End of %s\n",__FUNCTION__);
 }
 
 /*
@@ -2666,6 +2820,7 @@ static void free_recorded_refs(struct send_ctx *sctx)
 static int orphanize_inode(struct send_ctx *sctx, u64 ino, u64 gen,
 			  struct fs_path *path)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct fs_path *orphan;
 
@@ -2682,6 +2837,7 @@ static int orphanize_inode(struct send_ctx *sctx, u64 ino, u64 gen,
 out:
 	fs_path_free(orphan);
 	return ret;
+        printk("End of %s\n",__FUNCTION__);
 }
 
 /*
@@ -2691,6 +2847,7 @@ out:
  */
 static int can_rmdir(struct send_ctx *sctx, u64 dir, u64 send_progress)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_root *root = sctx->parent_root;
 	struct btrfs_path *path;
@@ -2743,18 +2900,98 @@ static int can_rmdir(struct send_ctx *sctx, u64 dir, u64 send_progress)
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
+
+
+void reverse(char str[], int length)
+{
+    int start = 0;
+    int end = length -1;
+    while (start < end)
+    {
+        swap(*(str+start), *(str+end));
+        start++;
+        end--;
+    }
+}
+
+#define false 0
+#define true 1
+
+char* itoa(u64 num, char* str, u64 base)
+{
+    u64 i = 0;
+    u64 isNegative = false;
+    /* Handle 0 explicitely, otherwise empty string is printed for 0 */
+    if (num == 0)
+    {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
+    }
+    // In standard itoa(), negative numbers are handled only with 
+    // base 10. Otherwise numbers are considered unsigned.
+    if (num < 0 && base == 10)
+    {
+        isNegative = true;
+        num = -num;
+    }
+    // Process individual digits
+    while (num != 0)
+    {
+        u64 rem = num % base;
+        str[i++] = (rem > 9)? (rem-10) + 'a' : rem + '0';
+        num = num/base;
+    }
+    // If number is negative, append '-'
+    if (isNegative)
+        str[i++] = '-';
+    str[i] = '\0'; // Append string terminator
+    // Reverse the string
+    reverse(str, i);
+    return str;
+}
+
+int call_get_cur_path(struct send_ctx *sctx)
+{
+	 struct fs_path *p = NULL;
+         p = fs_path_alloc();
+	 if(!p)
+		return -1;
+        get_cur_path(sctx,sctx->cur_ino,sctx->cur_inode_gen,p);
+	loff_t pos = 0;
+	mm_segment_t old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	if(p->start!=NULL)
+	{
+		vfs_write(sctx->send_filp,p->start,strlen(p->start), &pos);
+		vfs_write(sctx->send_filp,"\n",strlen("\n"), &pos);
+	}
+	set_fs(old_fs);
+        printk("call_get_cur_path p->start : %s p->end : %s\n",p->start,p->end);
+
+
+
+
+
+	return 0;
+}
+
 
 /*
  * This does all the move/link/unlink/rmdir magic.
  */
 static int process_recorded_refs(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct recorded_ref *cur;
 	struct recorded_ref *cur2;
-	struct list_head check_dirs;
+	struct ulist *check_dirs = NULL;
+	struct ulist_iterator uit;
+	struct ulist_node *un;
 	struct fs_path *valid_path = NULL;
 	u64 ow_inode = 0;
 	u64 ow_gen;
@@ -2768,10 +3005,15 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 	 * which is always '..'
 	 */
 	BUG_ON(sctx->cur_ino <= BTRFS_FIRST_FREE_OBJECTID);
-	INIT_LIST_HEAD(&check_dirs);
 
 	valid_path = fs_path_alloc();
 	if (!valid_path) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	check_dirs = ulist_alloc(GFP_NOFS);
+	if (!check_dirs) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -2802,6 +3044,7 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 			goto out;
 		is_orphan = 1;
 	} else {
+		call_get_cur_path(sctx);   // T
 		ret = get_cur_path(sctx, sctx->cur_ino, sctx->cur_inode_gen,
 				valid_path);
 		if (ret < 0)
@@ -2912,7 +3155,8 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 					goto out;
 			}
 		}
-		ret = dup_ref(cur, &check_dirs);
+		ret = ulist_add(check_dirs, cur->dir, cur->dir_gen,
+				GFP_NOFS);
 		if (ret < 0)
 			goto out;
 	}
@@ -2940,7 +3184,8 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 		}
 
 		list_for_each_entry(cur, &sctx->deleted_refs, list) {
-			ret = dup_ref(cur, &check_dirs);
+			ret = ulist_add(check_dirs, cur->dir, cur->dir_gen,
+					GFP_NOFS);
 			if (ret < 0)
 				goto out;
 		}
@@ -2951,7 +3196,8 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 		 */
 		cur = list_entry(sctx->deleted_refs.next, struct recorded_ref,
 				list);
-		ret = dup_ref(cur, &check_dirs);
+		ret = ulist_add(check_dirs, cur->dir, cur->dir_gen,
+				GFP_NOFS);
 		if (ret < 0)
 			goto out;
 	} else if (!S_ISDIR(sctx->cur_inode_mode)) {
@@ -2971,10 +3217,12 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 				if (ret < 0)
 					goto out;
 			}
-			ret = dup_ref(cur, &check_dirs);
+			ret = ulist_add(check_dirs, cur->dir, cur->dir_gen,
+					GFP_NOFS);
 			if (ret < 0)
 				goto out;
 		}
+
 		/*
 		 * If the inode is still orphan, unlink the orphan. This may
 		 * happen when a previous inode did overwrite the first ref
@@ -2996,32 +3244,33 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 	 * deletion and if it's finally possible to perform the rmdir now.
 	 * We also update the inode stats of the parent dirs here.
 	 */
-	list_for_each_entry(cur, &check_dirs, list) {
+	ULIST_ITER_INIT(&uit);
+	while ((un = ulist_next(check_dirs, &uit))) {
 		/*
 		 * In case we had refs into dirs that were not processed yet,
 		 * we don't need to do the utime and rmdir logic for these dirs.
 		 * The dir will be processed later.
 		 */
-		if (cur->dir > sctx->cur_ino)
+		if (un->val > sctx->cur_ino)
 			continue;
 
-		ret = get_cur_inode_state(sctx, cur->dir, cur->dir_gen);
+		ret = get_cur_inode_state(sctx, un->val, un->aux);
 		if (ret < 0)
 			goto out;
 
 		if (ret == inode_state_did_create ||
 		    ret == inode_state_no_change) {
 			/* TODO delayed utimes */
-			ret = send_utimes(sctx, cur->dir, cur->dir_gen);
+			ret = send_utimes(sctx, un->val, un->aux);
 			if (ret < 0)
 				goto out;
 		} else if (ret == inode_state_did_delete) {
-			ret = can_rmdir(sctx, cur->dir, sctx->cur_ino);
+			ret = can_rmdir(sctx, un->val, sctx->cur_ino);
 			if (ret < 0)
 				goto out;
 			if (ret) {
-				ret = get_cur_path(sctx, cur->dir,
-						   cur->dir_gen, valid_path);
+				ret = get_cur_path(sctx, un->val, un->aux,
+						valid_path);
 				if (ret < 0)
 					goto out;
 				ret = send_rmdir(sctx, valid_path);
@@ -3034,9 +3283,10 @@ verbose_printk("btrfs: process_recorded_refs %llu\n", sctx->cur_ino);
 	ret = 0;
 
 out:
-	__free_recorded_refs(&check_dirs);
 	free_recorded_refs(sctx);
+	ulist_free(check_dirs);
 	fs_path_free(valid_path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3044,6 +3294,7 @@ static int __record_new_ref(int num, u64 dir, int index,
 			    struct fs_path *name,
 			    void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct send_ctx *sctx = ctx;
 	struct fs_path *p;
@@ -3070,6 +3321,7 @@ static int __record_new_ref(int num, u64 dir, int index,
 out:
 	if (ret)
 		fs_path_free(p);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3077,6 +3329,7 @@ static int __record_deleted_ref(int num, u64 dir, int index,
 				struct fs_path *name,
 				void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct send_ctx *sctx = ctx;
 	struct fs_path *p;
@@ -3103,11 +3356,13 @@ static int __record_deleted_ref(int num, u64 dir, int index,
 out:
 	if (ret)
 		fs_path_free(p);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int record_new_ref(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = iterate_inode_ref(sctx->send_root, sctx->left_path,
@@ -3117,11 +3372,13 @@ static int record_new_ref(struct send_ctx *sctx)
 	ret = 0;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int record_deleted_ref(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = iterate_inode_ref(sctx->parent_root, sctx->right_path,
@@ -3131,13 +3388,12 @@ static int record_deleted_ref(struct send_ctx *sctx)
 	ret = 0;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 struct find_ref_ctx {
 	u64 dir;
-	u64 dir_gen;
-	struct btrfs_root *root;
 	struct fs_path *name;
 	int found_idx;
 };
@@ -3146,41 +3402,30 @@ static int __find_iref(int num, u64 dir, int index,
 		       struct fs_path *name,
 		       void *ctx_)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct find_ref_ctx *ctx = ctx_;
-	u64 dir_gen;
-	int ret;
 
 	if (dir == ctx->dir && fs_path_len(name) == fs_path_len(ctx->name) &&
 	    strncmp(name->start, ctx->name->start, fs_path_len(name)) == 0) {
-		/*
-		 * To avoid doing extra lookups we'll only do this if everything
-		 * else matches.
-		 */
-		ret = get_inode_info(ctx->root, dir, NULL, &dir_gen, NULL,
-				     NULL, NULL, NULL);
-		if (ret)
-			return ret;
-		if (dir_gen != ctx->dir_gen)
-			return 0;
 		ctx->found_idx = num;
 		return 1;
 	}
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
 static int find_iref(struct btrfs_root *root,
 		     struct btrfs_path *path,
 		     struct btrfs_key *key,
-		     u64 dir, u64 dir_gen, struct fs_path *name)
+		     u64 dir, struct fs_path *name)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct find_ref_ctx ctx;
 
 	ctx.dir = dir;
 	ctx.name = name;
-	ctx.dir_gen = dir_gen;
 	ctx.found_idx = -1;
-	ctx.root = root;
 
 	ret = iterate_inode_ref(root, path, key, 0, __find_iref, &ctx);
 	if (ret < 0)
@@ -3189,6 +3434,7 @@ static int find_iref(struct btrfs_root *root,
 	if (ctx.found_idx == -1)
 		return -ENOENT;
 
+        printk("End of %s\n",__FUNCTION__);
 	return ctx.found_idx;
 }
 
@@ -3196,22 +3442,18 @@ static int __record_changed_new_ref(int num, u64 dir, int index,
 				    struct fs_path *name,
 				    void *ctx)
 {
-	u64 dir_gen;
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 
-	ret = get_inode_info(sctx->send_root, dir, NULL, &dir_gen, NULL,
-			     NULL, NULL, NULL);
-	if (ret)
-		return ret;
-
 	ret = find_iref(sctx->parent_root, sctx->right_path,
-			sctx->cmp_key, dir, dir_gen, name);
+			sctx->cmp_key, dir, name);
 	if (ret == -ENOENT)
 		ret = __record_new_ref(num, dir, index, name, sctx);
 	else if (ret > 0)
 		ret = 0;
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3219,27 +3461,24 @@ static int __record_changed_deleted_ref(int num, u64 dir, int index,
 					struct fs_path *name,
 					void *ctx)
 {
-	u64 dir_gen;
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 
-	ret = get_inode_info(sctx->parent_root, dir, NULL, &dir_gen, NULL,
-			     NULL, NULL, NULL);
-	if (ret)
-		return ret;
-
 	ret = find_iref(sctx->send_root, sctx->left_path, sctx->cmp_key,
-			dir, dir_gen, name);
+			dir, name);
 	if (ret == -ENOENT)
 		ret = __record_deleted_ref(num, dir, index, name, sctx);
 	else if (ret > 0)
 		ret = 0;
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int record_changed_ref(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	ret = iterate_inode_ref(sctx->send_root, sctx->left_path,
@@ -3253,6 +3492,7 @@ static int record_changed_ref(struct send_ctx *sctx)
 	ret = 0;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3263,6 +3503,7 @@ out:
 static int process_all_refs(struct send_ctx *sctx,
 			    enum btrfs_compare_tree_result cmd)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_root *root;
 	struct btrfs_path *path;
@@ -3318,6 +3559,7 @@ static int process_all_refs(struct send_ctx *sctx,
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3326,6 +3568,7 @@ static int send_set_xattr(struct send_ctx *sctx,
 			  const char *name, int name_len,
 			  const char *data, int data_len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	ret = begin_cmd(sctx, BTRFS_SEND_C_SET_XATTR);
@@ -3340,6 +3583,7 @@ static int send_set_xattr(struct send_ctx *sctx,
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3347,6 +3591,7 @@ static int send_remove_xattr(struct send_ctx *sctx,
 			  struct fs_path *path,
 			  const char *name, int name_len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	ret = begin_cmd(sctx, BTRFS_SEND_C_REMOVE_XATTR);
@@ -3360,6 +3605,7 @@ static int send_remove_xattr(struct send_ctx *sctx,
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3368,6 +3614,7 @@ static int __process_new_xattr(int num, struct btrfs_key *di_key,
 			       const char *data, int data_len,
 			       u8 type, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 	struct fs_path *p;
@@ -3401,6 +3648,7 @@ static int __process_new_xattr(int num, struct btrfs_key *di_key,
 
 out:
 	fs_path_free(p);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3409,6 +3657,7 @@ static int __process_deleted_xattr(int num, struct btrfs_key *di_key,
 				   const char *data, int data_len,
 				   u8 type, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 	struct fs_path *p;
@@ -3425,26 +3674,31 @@ static int __process_deleted_xattr(int num, struct btrfs_key *di_key,
 
 out:
 	fs_path_free(p);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_new_xattr(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	ret = iterate_dir_item(sctx->send_root, sctx->left_path,
 			       sctx->cmp_key, __process_new_xattr, sctx);
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_deleted_xattr(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	ret = iterate_dir_item(sctx->parent_root, sctx->right_path,
 			       sctx->cmp_key, __process_deleted_xattr, sctx);
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3461,6 +3715,7 @@ static int __find_xattr(int num, struct btrfs_key *di_key,
 			const char *data, int data_len,
 			u8 type, void *vctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	struct find_xattr_ctx *ctx = vctx;
 
 	if (name_len == ctx->name_len &&
@@ -3472,6 +3727,7 @@ static int __find_xattr(int num, struct btrfs_key *di_key,
 			return -ENOMEM;
 		return 1;
 	}
+        printk("End of %s\n",__FUNCTION__);
 	return 0;
 }
 
@@ -3481,6 +3737,7 @@ static int find_xattr(struct btrfs_root *root,
 		      const char *name, int name_len,
 		      char **data, int *data_len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct find_xattr_ctx ctx;
 
@@ -3502,6 +3759,7 @@ static int find_xattr(struct btrfs_root *root,
 	} else {
 		kfree(ctx.found_data);
 	}
+        printk("End of %s\n",__FUNCTION__);
 	return ctx.found_idx;
 }
 
@@ -3511,6 +3769,7 @@ static int __process_changed_new_xattr(int num, struct btrfs_key *di_key,
 				       const char *data, int data_len,
 				       u8 type, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 	char *found_data = NULL;
@@ -3533,6 +3792,7 @@ static int __process_changed_new_xattr(int num, struct btrfs_key *di_key,
 	}
 
 	kfree(found_data);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3541,6 +3801,7 @@ static int __process_changed_deleted_xattr(int num, struct btrfs_key *di_key,
 					   const char *data, int data_len,
 					   u8 type, void *ctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct send_ctx *sctx = ctx;
 
@@ -3552,11 +3813,13 @@ static int __process_changed_deleted_xattr(int num, struct btrfs_key *di_key,
 	else if (ret >= 0)
 		ret = 0;
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_changed_xattr(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	ret = iterate_dir_item(sctx->send_root, sctx->left_path,
@@ -3567,11 +3830,13 @@ static int process_changed_xattr(struct send_ctx *sctx)
 			sctx->cmp_key, __process_changed_deleted_xattr, sctx);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_all_new_xattrs(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_root *root;
 	struct btrfs_path *path;
@@ -3619,6 +3884,7 @@ static int process_all_new_xattrs(struct send_ctx *sctx)
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3628,6 +3894,7 @@ out:
  */
 static int send_write(struct send_ctx *sctx, u64 offset, u32 len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 	loff_t pos = offset;
@@ -3680,6 +3947,7 @@ out:
 	set_fs(old_fs);
 	if (ret < 0)
 		return ret;
+        printk("End of %s\n",__FUNCTION__);
 	return num_read;
 }
 
@@ -3690,6 +3958,7 @@ static int send_clone(struct send_ctx *sctx,
 		      u64 offset, u32 len,
 		      struct clone_root *clone_root)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 	u64 gen;
@@ -3739,6 +4008,7 @@ verbose_printk("btrfs: send_clone offset=%llu, len=%d, clone_root=%llu, "
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	return ret;
 }
@@ -3749,6 +4019,7 @@ out:
 static int send_update_extent(struct send_ctx *sctx,
 			      u64 offset, u32 len)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct fs_path *p;
 
@@ -3772,6 +4043,7 @@ static int send_update_extent(struct send_ctx *sctx,
 
 tlv_put_failure:
 out:
+        printk("End of %s\n",__FUNCTION__);
 	fs_path_free(p);
 	return ret;
 }
@@ -3781,6 +4053,7 @@ static int send_write_or_clone(struct send_ctx *sctx,
 			       struct btrfs_key *key,
 			       struct clone_root *clone_root)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_file_extent_item *ei;
 	u64 offset = key->offset;
@@ -3830,6 +4103,7 @@ static int send_write_or_clone(struct send_ctx *sctx,
 		ret = 0;
 	}
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -3837,6 +4111,7 @@ static int is_extent_unchanged(struct send_ctx *sctx,
 			       struct btrfs_path *left_path,
 			       struct btrfs_key *ekey)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_key key;
 	struct btrfs_path *path = NULL;
@@ -3914,8 +4189,7 @@ static int is_extent_unchanged(struct send_ctx *sctx,
 	btrfs_item_key_to_cpu(eb, &found_key, slot);
 	if (found_key.objectid != key.objectid ||
 	    found_key.type != key.type) {
-		/* If we're a hole then just pretend nothing changed */
-		ret = (left_disknr) ? 0 : 1;
+		ret = 0;
 		goto out;
 	}
 
@@ -3941,8 +4215,7 @@ static int is_extent_unchanged(struct send_ctx *sctx,
 		 * This may only happen on the first iteration.
 		 */
 		if (found_key.offset + right_len <= ekey->offset) {
-			/* If we're a hole just pretend nothing changed */
-			ret = (left_disknr) ? 0 : 1;
+			ret = 0;
 			goto out;
 		}
 
@@ -4000,6 +4273,7 @@ static int is_extent_unchanged(struct send_ctx *sctx,
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4007,8 +4281,9 @@ static int process_extent(struct send_ctx *sctx,
 			  struct btrfs_path *path,
 			  struct btrfs_key *key)
 {
-	struct clone_root *found_clone = NULL;
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
+	struct clone_root *found_clone = NULL;
 
 	if (S_ISLNK(sctx->cur_inode_mode))
 		return 0;
@@ -4021,32 +4296,6 @@ static int process_extent(struct send_ctx *sctx,
 			ret = 0;
 			goto out;
 		}
-	} else {
-		struct btrfs_file_extent_item *ei;
-		u8 type;
-
-		ei = btrfs_item_ptr(path->nodes[0], path->slots[0],
-				    struct btrfs_file_extent_item);
-		type = btrfs_file_extent_type(path->nodes[0], ei);
-		if (type == BTRFS_FILE_EXTENT_PREALLOC ||
-		    type == BTRFS_FILE_EXTENT_REG) {
-			/*
-			 * The send spec does not have a prealloc command yet,
-			 * so just leave a hole for prealloc'ed extents until
-			 * we have enough commands queued up to justify rev'ing
-			 * the send spec.
-			 */
-			if (type == BTRFS_FILE_EXTENT_PREALLOC) {
-				ret = 0;
-				goto out;
-			}
-
-			/* Have a hole, just skip it. */
-			if (btrfs_file_extent_disk_bytenr(path->nodes[0], ei) == 0) {
-				ret = 0;
-				goto out;
-			}
-		}
 	}
 
 	ret = find_extent_clone(sctx, path, key->objectid, key->offset,
@@ -4057,11 +4306,13 @@ static int process_extent(struct send_ctx *sctx,
 	ret = send_write_or_clone(sctx, path, key, found_clone);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_all_extents(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_root *root;
 	struct btrfs_path *path;
@@ -4107,11 +4358,13 @@ static int process_all_extents(struct send_ctx *sctx)
 
 out:
 	btrfs_free_path(path);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int process_recorded_refs_if_needed(struct send_ctx *sctx, int at_end)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	if (sctx->cur_ino == 0)
@@ -4134,11 +4387,69 @@ static int process_recorded_refs_if_needed(struct send_ctx *sctx, int at_end)
 	sctx->send_progress = sctx->cur_ino + 1;
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
+int call_qupdatedb(struct send_ctx *sctx, u64 ino, u64 gen)
+{
+	int ret;
+        struct fs_path *p = NULL;
+        struct btrfs_inode_item *ii;
+        struct btrfs_path *path = NULL;
+        struct extent_buffer *eb;
+        struct btrfs_key key;
+        int slot;
+        struct btrfs_timespec cbts;
+        struct btrfs_timespec mbts;
+        char times_buf[128];
 
+	memset(times_buf,'0',sizeof(times_buf));
+	loff_t pos = 0;
+        mm_segment_t old_fs = get_fs();
+        set_fs(KERNEL_DS);
+        p = fs_path_alloc();
+        if (!p)
+                return -ENOMEM;
+
+        path = alloc_path_for_send();
+        if (!path) {
+                ret = -ENOMEM;
+                goto out;
+        }
+
+        key.objectid = ino;
+        key.type = BTRFS_INODE_ITEM_KEY;
+        key.offset = 0;
+        ret = btrfs_search_slot(NULL, sctx->send_root, &key, path, 0, 0);
+        if (ret < 0)
+                goto out;
+
+        eb = path->nodes[0];
+        slot = path->slots[0];
+        ii = btrfs_item_ptr(eb, slot, struct btrfs_inode_item);
+
+        read_extent_buffer(eb, &cbts, (unsigned long)btrfs_inode_ctime(ii), sizeof(cbts));
+        read_extent_buffer(eb, &mbts, (unsigned long)btrfs_inode_mtime(ii), sizeof(mbts));
+	//printk("qupdatedb ctime is %lu and mtime is %lu\n",(unsigned long)cbts.sec,(unsigned long)mbts.sec);
+	if((unsigned long)cbts.sec >= (unsigned long)mbts.sec)
+		memcpy(times_buf, &cbts, sizeof(cbts));
+	else
+		memcpy(times_buf, &mbts, sizeof(mbts));
+	vfs_write(sctx->send_filp,times_buf,sizeof(mbts), &pos);
+	vfs_write(sctx->send_filp,"\t",strlen("\t"),&pos);
+/*
+
+	char str[50];
+	itoa((int)cbts.sec,str,10);
+	printk("itoa = %s\n",str);
+	set_fs(old_fs);	
+	call_get_cur_path(sctx);*/
+out :
+	return ret;
+}
 static int finish_inode_if_needed(struct send_ctx *sctx, int at_end)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	u64 left_mode;
 	u64 left_uid;
@@ -4152,7 +4463,6 @@ static int finish_inode_if_needed(struct send_ctx *sctx, int at_end)
 	ret = process_recorded_refs_if_needed(sctx, at_end);
 	if (ret < 0)
 		goto out;
-
 	if (sctx->cur_ino == 0 || sctx->cur_inode_deleted)
 		goto out;
 	if (!at_end && sctx->cmp_key->objectid == sctx->cur_ino)
@@ -4207,28 +4517,77 @@ static int finish_inode_if_needed(struct send_ctx *sctx, int at_end)
 	ret = send_utimes(sctx, sctx->cur_ino, sctx->cur_inode_gen);
 	if (ret < 0)
 		goto out;
+	call_qupdatedb(sctx, sctx->cur_ino, sctx->cur_inode_gen);
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
-
+int qupdatedb_write_operation(struct send_ctx *sctx, enum btrfs_compare_tree_result result)
+{
+	int ret;
+	loff_t pos = 0;
+	mm_segment_t old_fs = get_fs();
+       	set_fs(KERNEL_DS);
+	printk("Function start : %s\n",__FUNCTION__);
+	if(result == BTRFS_COMPARE_TREE_DELETED)
+		{
+			if (S_ISDIR(sctx->cur_inode_mode))
+        			vfs_write(sctx->send_filp,"2\t2\t",strlen("2\t2\t"), &pos);
+			else
+				vfs_write(sctx->send_filp,"2\t1\t",strlen("2\t1\t"), &pos);
+		set_fs(old_fs);
+		return 0;
+		}
+	if(result == BTRFS_COMPARE_TREE_NEW)
+		{
+		if (S_ISDIR(sctx->cur_inode_mode)) 
+			{
+			ret = did_create_dir(sctx, sctx->cur_ino);
+			if(ret == 0)
+				{
+                		vfs_write(sctx->send_filp, "1\t2\t", strlen("1\t2\t"), &pos);
+        			set_fs(old_fs);
+				return 0;
+				}
+			}
+   		vfs_write(sctx->send_filp,"1\t1\t",strlen("1\t1\t"), &pos);
+        	set_fs(old_fs);
+		return 0;
+			
+		}
+}
 static int changed_inode(struct send_ctx *sctx,
 			 enum btrfs_compare_tree_result result)
 {
+	
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_key *key = sctx->cmp_key;
 	struct btrfs_inode_item *left_ii = NULL;
 	struct btrfs_inode_item *right_ii = NULL;
 	u64 left_gen = 0;
 	u64 right_gen = 0;
+//{T
+/*
+*/
 
+//	fd = sys_open(fname, O_WRONLY|O_CREAT, 0644);
+//	char data[] = "this is the line to be written\n";
+//	filep = fget(fd);
+//	write_buf(filep, data, strlen(data),0);
+
+//}T
 	ret = close_cur_inode_file(sctx);
+	printk("ret value is %d\n",ret);
 	if (ret < 0)
 		goto out;
 
 	sctx->cur_ino = key->objectid;
 	sctx->cur_inode_new_gen = 0;
-
+	/* 
+	 *Trial file handling from kernel side 
+	*/
 	/*
 	 * Set send_progress to current inode. This will tell all get_cur_xxx
 	 * functions that the current inode's refs are not updated yet. Later,
@@ -4267,7 +4626,6 @@ static int changed_inode(struct send_ctx *sctx,
 		    sctx->cur_ino != BTRFS_FIRST_FREE_OBJECTID)
 			sctx->cur_inode_new_gen = 1;
 	}
-
 	if (result == BTRFS_COMPARE_TREE_NEW) {
 		sctx->cur_inode_gen = left_gen;
 		sctx->cur_inode_new = 1;
@@ -4277,7 +4635,10 @@ static int changed_inode(struct send_ctx *sctx,
 		sctx->cur_inode_mode = btrfs_inode_mode(
 				sctx->left_path->nodes[0], left_ii);
 		if (sctx->cur_ino != BTRFS_FIRST_FREE_OBJECTID)
+			{
+			qupdatedb_write_operation(sctx,result);
 			ret = send_create_inode_if_needed(sctx);
+			}
 	} else if (result == BTRFS_COMPARE_TREE_DELETED) {
 		sctx->cur_inode_gen = right_gen;
 		sctx->cur_inode_new = 0;
@@ -4286,6 +4647,7 @@ static int changed_inode(struct send_ctx *sctx,
 				sctx->right_path->nodes[0], right_ii);
 		sctx->cur_inode_mode = btrfs_inode_mode(
 				sctx->right_path->nodes[0], right_ii);
+		qupdatedb_write_operation(sctx,result);
 	} else if (result == BTRFS_COMPARE_TREE_CHANGED) {
 		/*
 		 * We need to do some special handling in case the inode was
@@ -4294,6 +4656,7 @@ static int changed_inode(struct send_ctx *sctx,
 		 * reused the same inum. So we have to treat the old inode as
 		 * deleted and the new one as new.
 		 */
+
 		if (sctx->cur_inode_new_gen) {
 			/*
 			 * First, process the inode as if it was deleted.
@@ -4356,6 +4719,7 @@ static int changed_inode(struct send_ctx *sctx,
 	}
 
 out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4372,6 +4736,7 @@ out:
 static int changed_ref(struct send_ctx *sctx,
 		       enum btrfs_compare_tree_result result)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
@@ -4385,7 +4750,7 @@ static int changed_ref(struct send_ctx *sctx,
 		else if (result == BTRFS_COMPARE_TREE_CHANGED)
 			ret = record_changed_ref(sctx);
 	}
-
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4397,6 +4762,7 @@ static int changed_ref(struct send_ctx *sctx,
 static int changed_xattr(struct send_ctx *sctx,
 			 enum btrfs_compare_tree_result result)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
@@ -4410,6 +4776,7 @@ static int changed_xattr(struct send_ctx *sctx,
 			ret = process_changed_xattr(sctx);
 	}
 
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4421,6 +4788,7 @@ static int changed_xattr(struct send_ctx *sctx,
 static int changed_extent(struct send_ctx *sctx,
 			  enum btrfs_compare_tree_result result)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
@@ -4431,64 +4799,7 @@ static int changed_extent(struct send_ctx *sctx,
 					sctx->cmp_key);
 	}
 
-	return ret;
-}
-
-static int dir_changed(struct send_ctx *sctx, u64 dir)
-{
-	u64 orig_gen, new_gen;
-	int ret;
-
-	ret = get_inode_info(sctx->send_root, dir, NULL, &new_gen, NULL, NULL,
-			     NULL, NULL);
-	if (ret)
-		return ret;
-
-	ret = get_inode_info(sctx->parent_root, dir, NULL, &orig_gen, NULL,
-			     NULL, NULL, NULL);
-	if (ret)
-		return ret;
-
-	return (orig_gen != new_gen) ? 1 : 0;
-}
-
-static int compare_refs(struct send_ctx *sctx, struct btrfs_path *path,
-			struct btrfs_key *key)
-{
-	struct btrfs_inode_extref *extref;
-	struct extent_buffer *leaf;
-	u64 dirid = 0, last_dirid = 0;
-	unsigned long ptr;
-	u32 item_size;
-	u32 cur_offset = 0;
-	int ref_name_len;
-	int ret = 0;
-
-	/* Easy case, just check this one dirid */
-	if (key->type == BTRFS_INODE_REF_KEY) {
-		dirid = key->offset;
-
-		ret = dir_changed(sctx, dirid);
-		goto out;
-	}
-
-	leaf = path->nodes[0];
-	item_size = btrfs_item_size_nr(leaf, path->slots[0]);
-	ptr = btrfs_item_ptr_offset(leaf, path->slots[0]);
-	while (cur_offset < item_size) {
-		extref = (struct btrfs_inode_extref *)(ptr +
-						       cur_offset);
-		dirid = btrfs_inode_extref_parent(leaf, extref);
-		ref_name_len = btrfs_inode_extref_name_len(leaf, extref);
-		cur_offset += ref_name_len + sizeof(*extref);
-		if (dirid == last_dirid)
-			continue;
-		ret = dir_changed(sctx, dirid);
-		if (ret)
-			break;
-		last_dirid = dirid;
-	}
-out:
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4504,21 +4815,9 @@ static int changed_cb(struct btrfs_root *left_root,
 		      enum btrfs_compare_tree_result result,
 		      void *ctx)
 {
+printk("Function start : %s, result : %d\n",__FUNCTION__,result);
 	int ret = 0;
 	struct send_ctx *sctx = ctx;
-
-	if (result == BTRFS_COMPARE_TREE_SAME) {
-		if (key->type != BTRFS_INODE_REF_KEY &&
-		    key->type != BTRFS_INODE_EXTREF_KEY)
-			return 0;
-		ret = compare_refs(sctx, left_path, key);
-		if (!ret)
-			return 0;
-		if (ret < 0)
-			return ret;
-		result = BTRFS_COMPARE_TREE_CHANGED;
-		ret = 0;
-	}
 
 	sctx->left_path = left_path;
 	sctx->right_path = right_path;
@@ -4527,28 +4826,40 @@ static int changed_cb(struct btrfs_root *left_root,
 	ret = finish_inode_if_needed(sctx, 0);
 	if (ret < 0)
 		goto out;
-
+	//printk("left_root->inode_no==%lu\nright_root->i_no==%lu\n",left_root->cache_inode->i_ino,right_root->cache_inode->i_ino);
 	/* Ignore non-FS objects */
 	if (key->objectid == BTRFS_FREE_INO_OBJECTID ||
 	    key->objectid == BTRFS_FREE_SPACE_OBJECTID)
 		goto out;
-
+//	printk("Inside changed_cb, Key->objectid is %llu\n",key->objectid);
+//	printk("key->type is %d\n",key->type);
+/*
+	* We should modify time for each of the item change.
+*/
 	if (key->type == BTRFS_INODE_ITEM_KEY)
-		ret = changed_inode(sctx, result);
+		{
+		 ret = changed_inode(sctx, result);
+		}
 	else if (key->type == BTRFS_INODE_REF_KEY ||
 		 key->type == BTRFS_INODE_EXTREF_KEY)
+		{
 		ret = changed_ref(sctx, result);
+		//call_get_cur_path(sctx);
+		}
 	else if (key->type == BTRFS_XATTR_ITEM_KEY)
 		ret = changed_xattr(sctx, result);
 	else if (key->type == BTRFS_EXTENT_DATA_KEY)
 		ret = changed_extent(sctx, result);
+//	printk("result is %d and ret is %d\n",result,ret);
 
 out:
+	printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int full_send_tree(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 	struct btrfs_trans_handle *trans = NULL;
 	struct btrfs_root *send_root = sctx->send_root;
@@ -4654,11 +4965,13 @@ out:
 		else
 			btrfs_end_transaction(trans, send_root);
 	}
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 static int send_subvol(struct send_ctx *sctx)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret;
 
 	if (!(sctx->flags & BTRFS_SEND_FLAG_OMIT_STREAM_HEADER)) {
@@ -4692,11 +5005,13 @@ out:
 		close_cur_inode_file(sctx);
 
 	free_recorded_refs(sctx);
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
 
 long btrfs_ioctl_send(struct file *mnt_file, void __user *arg_)
 {
+printk("Function start : %s\n",__FUNCTION__);
 	int ret = 0;
 	struct btrfs_root *send_root;
 	struct btrfs_root *clone_root;
@@ -4711,6 +5026,7 @@ long btrfs_ioctl_send(struct file *mnt_file, void __user *arg_)
 		return -EPERM;
 
 	send_root = BTRFS_I(file_inode(mnt_file))->root;
+//	printk("in send,send_root->objectid %llu\n",send_root->objectid);
 	fs_info = send_root->fs_info;
 
 	/*
@@ -4749,6 +5065,10 @@ long btrfs_ioctl_send(struct file *mnt_file, void __user *arg_)
 	}
 
 	arg = memdup_user(arg_, sizeof(*arg));
+	//printk("GSLABS: send called succesfully\n");
+//t
+	//printk("GSLSBS: arguments of send \n send _fd : %lld\nclone_sources_count : %llu\n clone_sources is a pointer\n parent_root : %llu \n flags : %llu\n",arg->send_fd,arg->clone_sources_count,arg->parent_root,arg->flags);
+//t
 	if (IS_ERR(arg)) {
 		ret = PTR_ERR(arg);
 		arg = NULL;
@@ -4894,6 +5214,6 @@ out:
 
 		kfree(sctx);
 	}
-
+        printk("End of %s\n",__FUNCTION__);
 	return ret;
 }
